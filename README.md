@@ -1,34 +1,53 @@
 # Semantic Query Cache POC
 
-A proof-of-concept chatbot demonstrating semantic query caching with document Q&A.
+A proof-of-concept chatbot demonstrating **dual-tier semantic query caching** with document Q&A.
 
 ## Architecture
 
 **Backend (FastAPI):**
-- Document upload and chunking
-- Qdrant vector storage for document context
-- Redis vector search for semantic query caching
-- LLM integration (OpenAI/Gemini)
+- Document upload and chunking (PDF, DOCX, TXT)
+- Qdrant vector storage for document embeddings
+- Redis Stack with vector search for semantic caching
+- LLM integration (OpenAI GPT-4 / Google Gemini)
+- Local embeddings (sentence-transformers/all-MiniLM-L6-v2, 384-dim)
 
 **Frontend (React):**
 - File upload interface
-- Chat interface
-- Real-time cache hit/miss indicators
-- Cache analytics dashboard
+- Chat interface with real-time response indicators
+- Cache hit/miss visual feedback
+- Live cache statistics dashboard
 
 ## Key Features
 
-✅ **Semantic Query Matching** - "What is X?" matches "Explain X", "Tell me about X", etc.
-✅ **Document Isolation** - Each file has separate cache namespace (no cross-contamination)
-✅ **Lightweight Storage** - Only query + response cached (no heavy context)
-✅ **Fast Lookups** - Redis vector search (~15ms vs 3s LLM calls)
+✅ **Dual-Tier Caching** - Original query lookup → Normalized query fallback via LLM
+✅ **Semantic Matching** - "What is X?" matches "Explain X", "Tell me about X" using cosine similarity (threshold: 0.9)
+✅ **Query Normalization** - LLM-powered query standardization catches typos and paraphrases
+✅ **Document Isolation** - Separate cache namespaces per file_id (prevents cross-contamination)
+✅ **Lightweight Storage** - Caches only query embeddings + responses (no heavy context)
+✅ **Fast Vector Search** - Redis Stack with RediSearch index + manual fallback
+✅ **Real-time Analytics** - Track hit rate, total queries, and cached entries
 
-## Cache Strategy
+## Dual-Tier Cache Strategy
 
 ```
-User Query → Check Redis (semantic search on query + file_id)
-  ├─ Cache HIT (similarity > 0.9) → Return cached response (15ms)
-  └─ Cache MISS → Fetch context from Qdrant → Call LLM → Cache result
+User Query
+  │
+  ▼
+[TIER 1] Redis lookup with original query embedding
+  │
+  ├─ Cache HIT (similarity ≥ 0.9) → Return cached response (~15ms)
+  │
+  └─ Cache MISS
+       │
+       ▼
+     [TIER 2] Normalize query with LLM → Redis lookup with normalized embedding
+       │
+       ├─ Cache HIT → Return cached response + cache original query for future
+       │
+       └─ Cache MISS
+            │
+            ▼
+          Fetch context from Qdrant → Generate LLM response → Cache both forms
 ```
 
 ## Setup
@@ -135,11 +154,51 @@ cache-poc/
 └── README.md
 ```
 
-## Testing Cache Performance
+## How It Works
 
-The POC includes test scenarios:
-1. Exact query repetition
-2. Paraphrased queries
-3. Typos and case variations
-4. Cross-document isolation
-5. Cache hit rate analytics
+### Dual-Tier Cache Lookup Process
+
+**Tier 1: Original Query**
+1. User submits query: "What is machine learning?"
+2. System generates embedding (384-dim vector)
+3. Redis searches cache using RediSearch FT.SEARCH with KNN
+4. If match found with similarity ≥ 0.9 → Return cached response
+
+**Tier 2: Normalized Query (on Tier 1 miss)**
+1. LLM normalizes query: "What is machine learning?" → "Define machine learning"
+2. System generates embedding for normalized query
+3. Redis searches again with normalized embedding
+4. If match found → Return cached response + cache original query for future hits
+
+**On Cache Miss (both tiers)**
+1. Fetch relevant context from Qdrant (top 5 chunks)
+2. Send context + query to LLM (OpenAI/Gemini)
+3. Cache response with both original and normalized query forms
+
+### Statistics Tracking
+
+The system tracks:
+- **Total Queries**: All queries processed
+- **Cache Hits**: Queries served from cache (Tier 1 or Tier 2)
+- **Cache Misses**: Queries requiring LLM generation
+- **Hit Rate**: Percentage of cache hits
+- **Cached Queries**: Total unique query-response pairs stored
+
+### Example Scenarios
+
+**Scenario 1: Exact Match (Tier 1 Hit)**
+- Query 1: "What is Python?"
+- Query 2: "What is Python?" → Cache HIT (~15ms)
+
+**Scenario 2: Paraphrase (Tier 2 Hit)**
+- Query 1: "Explain Python programming"
+- Query 2: "What is Python?" → Normalized → Cache HIT (~20ms)
+
+**Scenario 3: Typo Handling (Tier 2 Hit)**
+- Query 1: "What is machine learning?"
+- Query 2: "What is machien lerning?" → Normalized → Cache HIT
+
+**Scenario 4: Document Isolation**
+- File A, Query: "What is Python?" → Response A
+- File B, Query: "What is Python?" → Response B (different context)
+- No cross-contamination between files
