@@ -1,0 +1,26 @@
+fastapi
+uvicorn
+python-multipart
+pydantic
+pydantic-settings
+python-dotenv
+
+# Vector stores
+qdrant-client
+redis
+
+# LLM & Embeddings
+openai
+google-generativeai
+langchain
+langchain-openai
+langchain-google-genai
+sentence-transformers  # Local embeddings (same as production system)
+
+# Document processing
+PyPDF2
+python-docx
+langchain-text-splitters
+
+# Utilities - no strict versions for Python 3.13 compatibility
+tiktoken
