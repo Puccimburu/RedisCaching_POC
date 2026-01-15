@@ -34,33 +34,49 @@ User Query → Check Redis (semantic search on query + file_id)
 ## Setup
 
 ### Prerequisites
-- Python 3.10+
+- Python 3.13+
 - Node.js 18+
-- Docker (for Redis Stack & Qdrant)
+- Redis Stack (self-hosted for vector search)
+- Qdrant (self-hosted for document storage)
+
+### Services Setup
+
+**Redis Stack (self-hosted):**
+```bash
+docker run -d --name redis-stack -p 6379:6379 -p 8001:8001 redis/redis-stack:latest
+```
+
+**Qdrant (self-hosted):**
+```bash
+docker run -d --name qdrant -p 6333:6333 qdrant/qdrant
+```
 
 ### Backend Setup
 
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+venv\Scripts\activate  # Windows
 pip install -r requirements.txt
 ```
 
-Create `.env` file:
+Create `.env` file (see `.env.example`):
 ```
 OPENAI_API_KEY=your_key_here
+GOOGLE_API_KEY=your_key_here
 REDIS_HOST=localhost
 REDIS_PORT=6379
 QDRANT_HOST=localhost
 QDRANT_PORT=6333
+EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 ```
 
-Start services:
+Start backend:
 ```bash
-docker-compose up -d
 python -m uvicorn app.main:app --reload
 ```
+
+Backend will run at `http://localhost:8000`
 
 ### Frontend Setup
 
@@ -69,6 +85,8 @@ cd frontend
 npm install
 npm start
 ```
+
+Frontend will run at `http://localhost:3000`
 
 ## Usage
 
@@ -83,31 +101,37 @@ npm start
 cache-poc/
 ├── backend/
 │   ├── app/
+│   │   ├── __init__.py
 │   │   ├── main.py              # FastAPI app
 │   │   ├── api/
 │   │   │   ├── upload.py        # Document upload endpoint
 │   │   │   └── query.py         # Query endpoint with caching
 │   │   ├── services/
-│   │   │   ├── qdrant_service.py    # Vector storage
-│   │   │   ├── redis_cache.py       # Semantic cache
-│   │   │   └── llm_service.py       # LLM integration
+│   │   │   ├── document_processor.py  # Document chunking
+│   │   │   ├── qdrant_service.py      # Vector storage
+│   │   │   ├── redis_cache.py         # Semantic cache
+│   │   │   └── llm_service.py         # LLM integration
 │   │   ├── models/
 │   │   │   └── schemas.py       # Pydantic models
 │   │   └── core/
 │   │       └── config.py        # Configuration
 │   ├── requirements.txt
-│   └── .env
+│   ├── .env.example
+│   └── .env (create this)
 ├── frontend/
+│   ├── public/
+│   │   └── index.html
 │   ├── src/
 │   │   ├── App.js
+│   │   ├── index.js
 │   │   ├── components/
 │   │   │   ├── FileUpload.js
 │   │   │   ├── ChatInterface.js
-│   │   │   └── CacheAnalytics.js
-│   │   └── services/
-│   │       └── api.js
-│   └── package.json
-├── docker-compose.yml
+│   │   │   └── CacheStats.js
+│   │   └── *.css (component styles)
+│   ├── package.json
+│   └── package-lock.json
+├── .gitignore
 └── README.md
 ```
 
